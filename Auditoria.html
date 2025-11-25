@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Herramienta Auditoría MIPG - SDDE</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- SheetJS para exportar a Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+
+    <!-- html2pdf para exportar a PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+
+    <!-- Iconos -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #003366;
+            --process-header: #e2e8f0;
+        }
+        .bg-corp { background-color: var(--primary); }
+        th { background-color: var(--primary); color: white; }
+        .process-row { background-color: var(--process-header); font-weight: bold; color: #1e293b; }
+        .status-terminado { background-color: #C6EFCE; color: #006100; border: 1px solid #006100; }
+        .status-proceso   { background-color: #FFEB9C; color: #9C6500; border: 1px solid #9C6500; }
+    </style>
+</head>
+
+<body class="bg-gray-100 font-sans text-sm">
+
+<!-- NAVBAR -->
+<nav class="bg-corp text-white p-4 shadow-lg sticky top-0 z-50">
+    <div class="container mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-clipboard-check text-2xl"></i>
+            <div>
+                <h1 class="text-xl font-bold">Tablero Seguimiento Auditoria Recertificación Icontec 2025</h1>
+                <p class="text-xs opacity-80">Secretaria Distrital Desarrollo Económico</p>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded shadow transition flex items-center gap-2 text-xs">
+                <i class="fas fa-file-excel"></i> Exportar Excel
+            </button>
+            <button onclick="exportToPDF()" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded shadow transition flex items-center gap-2 text-xs">
+                <i class="fas fa-file-pdf"></i> Exportar informe PDF
+            </button>
+        </div>
+    </div>
+</nav>
+
+<div class="container mx-auto p-6 space-y-6">
+
+    <!-- CONTROL DE USUARIOS / LOGIN -->
+    <section class="bg-white rounded-lg shadow p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+            <p class="text-xs font-bold text-gray-600 uppercase">Control de edición</p>
+            <p id="edit-status" class="text-xs text-red-600 mt-1">
+                Edición bloqueada. Inicie sesión para habilitar cambios.
+            </p>
+        </div>
+
+        <!-- Panel de login -->
+        <div id="login-panel" class="flex gap-2 items-center">
+            <input id="login-username" type="text" placeholder="Usuario (ej. gmanzano)"
+                   class="border rounded px-2 py-1 text-xs w-40">
+            <input id="login-password" type="password" placeholder="Contraseña"
+                   class="border rounded px-2 py-1 text-xs w-32">
+            <button onclick="loginUser()"
+                    class="px-3 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
+                <i class="fas fa-right-to-bracket"></i> Iniciar sesión
+            </button>
+        </div>
+
+        <!-- Panel de usuario activo -->
+        <div id="user-panel" class="hidden flex-col md:flex-row md:items-center md:gap-3 text-xs">
+            <div>
+                <p id="current-user-label" class="font-semibold text-gray-700"></p>
+                <p id="current-user-scope" class="text-gray-500"></p>
+            </div>
+            <button onclick="logoutUser()"
+                    class="mt-2 md:mt-0 px-3 py-1 rounded border border-gray-400 text-gray-700 hover:bg-gray-100 flex items-center gap-1">
+                <i class="fas fa-right-from-bracket"></i> Cerrar sesión
+            </button>
+        </div>
+    </section>
+
+    <!-- DASHBOARD GLOBAL -->
+    <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+        <div class="bg-white p-4 rounded-lg shadow border-l-4 border-blue-800">
+            <p class="text-xs uppercase text-gray-500 font-bold">Total ítems</p>
+            <p id="stat-total" class="text-2xl font-bold">0</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow border-l-4 border-green-600">
+            <p class="text-xs uppercase text-gray-500 font-bold">Terminado 100%</p>
+            <p id="stat-cumple" class="text-2xl font-bold text-green-700">0</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-600">
+            <p class="text-xs uppercase text-gray-500 font-bold">En proceso</p>
+            <p id="stat-proceso" class="text-2xl font-bold text-yellow-700">0</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow border-l-4 border-indigo-600">
+            <p class="text-xs uppercase text-gray-500 font-bold">% avance global</p>
+            <p id="stat-eficacia" class="text-2xl font-bold text-indigo-700">0%</p>
+        </div>
+
+    </section>
+
+    <!-- DASHBOARD POR PROCESO -->
+    <section class="space-y-3">
+        <h3 class="text-xs font-bold text-gray-600 uppercase mt-2">Avance por proceso</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Proceso 0 -->
+            <div class="bg-white p-4 rounded-lg shadow border-l-4 border-blue-700">
+                <p id="proc-0-name" class="text-xs uppercase text-gray-500 font-bold mb-2">Proceso 1</p>
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                        <p class="text-gray-500 uppercase font-semibold">Total ítems</p>
+                        <p id="proc-0-total" class="text-lg font-bold text-gray-800">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 uppercase font-semibold">Terminado 100%</p>
+                        <p id="proc-0-term" class="text-lg font-bold text-green-700">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 uppercase font-semibold">En proceso</p>
+                        <p id="proc-0-proc" class="text-lg font-bold text-yellow-700">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 uppercase font-semibold">% avance</p>
+                        <p id="proc-0-eff" class="text-lg font-bold text-indigo-700">0%</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Proceso 1 -->
+            <div class="bg-white p-4 rounded-lg shadow border-l-4 border-blue-700">
+                <p id="proc-1-name" class="text-xs uppercase text-gray-500 font-bold mb-2">Proceso 2</p>
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                        <p class="text-gray-500 uppercase font-semibold">Total ítems</p>
+                        <p id="proc-1-total" class="text-lg font-bold text-gray-800">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 uppercase font-semibold">Terminado 100%</p>
+                        <p id="proc-1-term" class="text-lg font-bold text-green-700">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 uppercase font-semibold">En proceso</p>
+                        <p id="proc-1-proc" class="text-lg font-bold text-yellow-700">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500 uppercase font-semibold">% avance</p>
+                        <p id="proc-1-eff" class="text-lg font-bold text-indigo-700">0%</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- TABLA PRINCIPAL -->
+    <section class="bg-white rounded-lg shadow overflow-hidden">
+
+        <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
+            <h2 class="font-bold"><i class="fas fa-table mr-2"></i>Instrumento de Auditoría SDDE</h2>
+
+            <div class="flex gap-3 items-center">
+                <button id="save-btn" onclick="confirmSave()" class="text-xs px-3 py-1 rounded border border-blue-600 text-blue-700 hover:bg-blue-50 flex items-center gap-1">
+                    <i class="fas fa-save"></i>
+                    Guardar
+                </button>
+
+                <button id="reset-btn" onclick="resetData()" class="text-red-600 underline text-xs flex items-center gap-1">
+                    <i class="fas fa-trash"></i> Reiniciar
+                </button>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr>
+                        <th class="p-3 text-xs">Requisito / Actividad</th>
+                        <th class="p-3 text-xs">Criterio de Verificación</th>
+                        <th class="p-3 text-xs">Dimensión MIPG</th>
+                        <th class="p-3 text-xs">Requisito ISO 9001:2015</th>
+                        <th class="p-3 text-xs text-center">Estado</th>
+                        <th class="p-3 text-xs">Evidencia</th>
+                        <th class="p-3 text-xs">Observación</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-table-body" class="divide-y divide-gray-200"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- HISTORIAL DE CAMBIOS -->
+    <section class="bg-white rounded-lg shadow p-4">
+        <div class="flex justify-between items-center mb-3">
+            <h2 class="font-bold text-sm"><i class="fas fa-clock-rotate-left mr-2"></i>Historial de cambios</h2>
+            <button onclick="renderLogTable()" class="text-xs px-2 py-1 rounded border border-gray-400 text-gray-700 hover:bg-gray-100 flex items-center gap-1">
+                <i class="fas fa-rotate"></i> Actualizar
+            </button>
+        </div>
+        <div class="overflow-x-auto max-h-72">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr>
+                        <th class="p-2 bg-gray-200">Fecha / Hora</th>
+                        <th class="p-2 bg-gray-200">Usuario</th>
+                        <th class="p-2 bg-gray-200">Proceso</th>
+                        <th class="p-2 bg-gray-200">Actividad</th>
+                        <th class="p-2 bg-gray-200">Campo</th>
+                        <th class="p-2 bg-gray-200">Antes</th>
+                        <th class="p-2 bg-gray-200">Después</th>
+                    </tr>
+                </thead>
+                <tbody id="log-body" class="divide-y divide-gray-100"></tbody>
+            </table>
+        </div>
+    </section>
+
+</div>
+
+<!-- CONTENEDOR OCULTO PARA INFORME PDF -->
+<div id="pdf-report" class="hidden p-6 text-xs font-sans"></div>
+
+<!-- FOOTER -->
+<footer class="bg-gray-800 text-white text-center p-3 text-xs mt-8">
+    SDDE – Auditoría Interna &copy; 2024
+</footer>
+
+<script>
+/* ============================================
+   CONFIGURACIÓN DE USUARIOS
+   Cambia las contraseñas aquí si lo deseas.
+============================================ */
+
+const USERS = {
+    "gmanzano": {
+        username: "gmanzano",
+        name: "Giovanni Manzano",
+        role: "admin",
+        password: "admin2025",
+        processes: "all"
+    },
+    "palcazar": {
+        username: "palcazar",
+        name: "Paola Alcázar",
+        role: "proceso",
+        password: "pa2025",
+        processes: [0] // Gestión del Desarrollo Económico
+    },
+    "ksoleno": {
+        username: "ksoleno",
+        name: "Kelly Soleno",
+        role: "proceso",
+        password: "ks2025",
+        processes: [1] // Gestión del Turismo
+    }
+};
+
+let currentUser = null;
+let isUnlocked = false;
+
+/* ============================================
+   PLANTILLA DE ÍTEMS (10 por proceso)
+============================================ */
+
+const itemsTemplate = [
+    {
+        act: "Caracterización del proceso",
+        q: "Caracterización del proceso vigente, integral, coherente con el mapa de procesos institucional y con versión actualizada en Isolución",
+        mipg: "Direccionamiento y planeación",
+        iso: "4.4 Enfoque basado en procesos / 7.5 Información documentada",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Documentación del proceso",
+        q: "Procedimientos e instructivos actualizados, con puntos de control definidos y alineado a la operación vigente, asi como con los registros de ejecución y disponibles como evidencia.",
+        mipg: "Gestión con valores para resultados",
+        iso: "4.4 Gestión de procesos / 6.3 Planificación de los cambios",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Matriz de requisitos legales y normograma",
+        q: "Matriz de requisitos legales y normograma del proceso actualizado a 2025, con depuración normativa y validación de aplicabilidad por oficina, debidamente publicados en el SharePoint.",
+        mipg: "Gestión con valores para resultados",
+        iso: "4.2 Requisitos legales / 8.1 Control operacional",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Indicadores del proceso",
+        q: "Indicadores actualizados, con metas registradas, análisis de variación, acciones de mejora formuladas y evidencia de seguimiento en Isolución, según aplique.",
+        mipg: "Evaluación de resultados",
+        iso: "9.1 Seguimiento, medición, análisis y evaluación",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Satisfacción de usuarios",
+        q: "El proceso mide y analiza sistemáticamente la satisfacción de los usuarios, mediante mecanismos formales de retroalimentación, y utiliza los resultados para identificar oportunidades de mejora y fortalecer la prestación del servicio",
+        mipg: "Evaluación de resultados",
+        iso: "9.1.2 Satisfacción del cliente",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Lecciones aprendidas",
+        q: "Registro de lecciones revisadas y aprobadas por las intancias y externas competentes",
+        mipg: "Gestión del conocimiento",
+        iso: "9.1 Análisis para mejora / 10.3 Mejora continua",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Gestión del riesgo",
+        q: "Matriz de riesgosdfel proceso vigente, que incluye riesgos de gestión y de corrupción, con valoración actualizada, controles establecidos y plan de tratamiento documentado y con evidencia de seguimiento en Isolución, según aplique",
+        mipg: "Control interno",
+        iso: "6.1 Riesgos y oportunidades",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Planes de mejoramiento",
+        q: "Registro oficial de no conformidades, con acciones correctivas formuladas y ejecutadas, y con el cierre debidamente soportado en el Isolucion",
+        mipg: "Control interno",
+        iso: "10.2 Acción correctiva / 10.3 Mejora continua",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Matriz de control operacional",
+        q: "El proceso cuenta con una Matriz de Control Operacional vigente, completa y actualizada, que identifica actividades críticas, riesgos, controles, responsables y evidencias, asegurando la mitigación de riesgos y la prevención de salidas no conformes  actualizada y regsitrada en el Share Point",
+        mipg: "Control interno",
+        iso: "8.1 Planificación y control operacional",
+        status: "",
+        evidencia: "",
+        obs: ""
+    },
+    {
+        act: "Control de salidas no conformes",
+        q: "El proceso identifica y controla las salidas no conformes, aplica el tratamiento adecuado y conserva la información documentada sobre la no conformidad, las acciones tomadas y la autoridad que autorizó la decisión actualizada y regsitrada en el Share Point",
+        mipg: "Control interno",
+        iso: "8.7 Control de salidas no conformes",
+        status: "",
+        evidencia: "",
+        obs: ""
+    }
+];
+
+/* ============================================
+   ESTRUCTURA DE LOS DOS PROCESOS
+============================================ */
+
+const initialData = [
+    { process: "1. PROCESO: GESTIÓN DEL DESARROLLO ECONÓMICO", items: JSON.parse(JSON.stringify(itemsTemplate)) },
+    { process: "2. PROCESO: GESTIÓN DEL TURISMO", items: JSON.parse(JSON.stringify(itemsTemplate)) }
+];
+
+const STORAGE_KEY = "audit_sdde_v3";
+const LOG_KEY     = "audit_sdde_log_v1";
+
+let auditData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || JSON.parse(JSON.stringify(initialData));
+let auditLog  = JSON.parse(localStorage.getItem(LOG_KEY)) || [];
+
+const tableBody = document.getElementById("audit-table-body");
+
+/* ============================================
+   LOGIN / LOGOUT / PERMISOS
+============================================ */
+
+function canEditProcess(processIndex) {
+    if (!currentUser) return false;
+    if (currentUser.processes === "all") return true;
+    return currentUser.processes.includes(processIndex);
+}
+
+function loginUser() {
+    const userInput = document.getElementById("login-username").value.trim();
+    const passInput = document.getElementById("login-password").value.trim();
+    const status    = document.getElementById("edit-status");
+    const loginPanel = document.getElementById("login-panel");
+    const userPanel  = document.getElementById("user-panel");
+    const userLabel  = document.getElementById("current-user-label");
+    const userScope  = document.getElementById("current-user-scope");
+
+    if (!USERS[userInput]) {
+        alert("Usuario no registrado.");
+        return;
+    }
+
+    const user = USERS[userInput];
+    if (user.password !== passInput) {
+        alert("Contraseña incorrecta.");
+        return;
+    }
+
+    currentUser = user;
+    isUnlocked = true;
+
+    status.textContent = "Edición habilitada para: " + user.name + " (" + user.username + ").";
+    status.classList.remove("text-red-600");
+    status.classList.add("text-green-600");
+
+    loginPanel.classList.add("hidden");
+    userPanel.classList.remove("hidden");
+
+    userLabel.textContent = "Usuario actual: " + user.name + " (" + user.username + ")";
+
+    if (user.processes === "all") {
+        userScope.textContent = "Rol: Administrador. Puede editar ambos procesos.";
+    } else {
+        const procesos = user.processes.map(p => p === 0 ? "Gestión del Desarrollo Económico" : "Gestión del Turismo");
+        userScope.textContent = "Rol: Usuario de proceso. Puede editar: " + procesos.join(", ");
+    }
+
+    document.getElementById("login-username").value = "";
+    document.getElementById("login-password").value = "";
+
+    updateEditMode();
+}
+
+function logoutUser() {
+    currentUser = null;
+    isUnlocked = false;
+
+    const status = document.getElementById("edit-status");
+    status.textContent = "Edición bloqueada. Inicie sesión para habilitar cambios.";
+    status.classList.remove("text-green-600");
+    status.classList.add("text-red-600");
+
+    document.getElementById("login-panel").classList.remove("hidden");
+    document.getElementById("user-panel").classList.add("hidden");
+
+    updateEditMode();
+}
+
+function updateEditMode() {
+    const disabledGlobal = !currentUser;
+
+    // Selects de estado
+    document.querySelectorAll(".state-select").forEach(el => {
+        const pIdx = parseInt(el.dataset.process, 10);
+        const can  = currentUser && canEditProcess(pIdx);
+        el.disabled = !can;
+        el.classList.toggle("bg-gray-100", !can);
+        el.classList.toggle("cursor-not-allowed", !can);
+    });
+
+    // Textareas
+    document.querySelectorAll(".evidence-input, .obs-input").forEach(el => {
+        const pIdx = parseInt(el.dataset.process, 10);
+        const can  = currentUser && canEditProcess(pIdx);
+        el.disabled = !can;
+        el.classList.toggle("bg-gray-100", !can);
+        el.classList.toggle("cursor-not-allowed", !can);
+    });
+
+    // Botones guardar y reiniciar
+    const saveBtn  = document.getElementById("save-btn");
+    const resetBtn = document.getElementById("reset-btn");
+
+    if (saveBtn) {
+        saveBtn.disabled = disabledGlobal;
+        saveBtn.classList.toggle("opacity-50", disabledGlobal);
+        saveBtn.classList.toggle("cursor-not-allowed", disabledGlobal);
+    }
+
+    if (resetBtn) {
+        const canReset = currentUser && currentUser.role === "admin";
+        resetBtn.disabled = !canReset;
+        resetBtn.classList.toggle("opacity-50", !canReset);
+        resetBtn.classList.toggle("cursor-not-allowed", !canReset);
+    }
+}
+
+/* ============================================
+   HISTORIAL DE CAMBIOS
+============================================ */
+
+function addLogEntry(gIdx, iIdx, field, oldValue, newValue) {
+    if (oldValue === newValue) return;
+
+    const entry = {
+        timestamp: new Date().toISOString(),
+        user: currentUser ? currentUser.username : "sin_sesion",
+        process: auditData[gIdx].process,
+        item: auditData[gIdx].items[iIdx].act,
+        field: field,
+        oldValue: oldValue || "",
+        newValue: newValue || ""
+    };
+    auditLog.push(entry);
+    localStorage.setItem(LOG_KEY, JSON.stringify(auditLog));
+    renderLogTable();
+}
+
+function formatDateTime(iso) {
+    try {
+        return new Date(iso).toLocaleString("es-CO");
+    } catch {
+        return iso;
+    }
+}
+
+function renderLogTable() {
+    const tbody = document.getElementById("log-body");
+    tbody.innerHTML = "";
+
+    if (!auditLog || auditLog.length === 0) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="7" class="p-2 text-center text-gray-400">Sin registros de cambios.</td>`;
+        tbody.appendChild(tr);
+        return;
+    }
+
+    const logs = [...auditLog].reverse(); // último primero
+
+    logs.forEach(log => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td class="p-2 align-top">${formatDateTime(log.timestamp)}</td>
+            <td class="p-2 align-top">${log.user}</td>
+            <td class="p-2 align-top">${log.process}</td>
+            <td class="p-2 align-top">${log.item}</td>
+            <td class="p-2 align-top">${log.field}</td>
+            <td class="p-2 align-top text-gray-500">${log.oldValue}</td>
+            <td class="p-2 align-top text-gray-800 font-semibold">${log.newValue}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+/* ============================================
+   RENDERIZACIÓN DE TABLA PRINCIPAL
+============================================ */
+
+function renderTable() {
+    tableBody.innerHTML = "";
+
+    auditData.forEach((group, gIdx) => {
+
+        const header = document.createElement("tr");
+        header.className = "process-row";
+        header.innerHTML = `<td colspan="7" class="p-3 border-l-4 border-blue-800 uppercase">
+            <i class="fas fa-folder-open text-blue-900 mr-2"></i>${group.process}
+        </td>`;
+        tableBody.appendChild(header);
+
+        group.items.forEach((item, iIdx) => {
+            const tr = document.createElement("tr");
+            tr.className = "bg-white hover:bg-gray-50";
+
+            tr.innerHTML = `
+                <td class="p-3 text-xs font-bold">${item.act}</td>
+                <td class="p-3 text-xs">${item.q}</td>
+                <td class="p-3 text-xs">${item.mipg}</td>
+                <td class="p-3 text-xs">${item.iso}</td>
+
+                <td class="p-3 text-center">
+                    <select data-process="${gIdx}" 
+                        onchange="updateStatus(${gIdx},${iIdx},this)"
+                        class="state-select w-full p-1 rounded text-xs font-bold ${getStatusClass(item.status)}">
+                        <option value="">- Seleccionar -</option>
+                        <option value="Terminado 100%" ${item.status==="Terminado 100%"?"selected":""}>Terminado 100%</option>
+                        <option value="En proceso" ${item.status==="En proceso"?"selected":""}>En proceso</option>
+                    </select>
+                </td>
+
+                <td class="p-2">
+                    <textarea data-process="${gIdx}"
+                        class="evidence-input w-full text-xs border rounded p-1 h-16"
+                        onchange="updateEvidencia(${gIdx},${iIdx},this.value)">${item.evidencia}</textarea>
+                </td>
+
+                <td class="p-2">
+                    <textarea data-process="${gIdx}"
+                        class="obs-input w-full text-xs border rounded p-1 h-16"
+                        onchange="updateObs(${gIdx},${iIdx},this.value)">${item.obs}</textarea>
+                </td>
+            `;
+
+            tableBody.appendChild(tr);
+        });
+    });
+
+    updateDashboard();
+    updateEditMode();
+    renderLogTable();
+}
+
+function getStatusClass(value) {
+    if (value === "Terminado 100%") return "status-terminado";
+    if (value === "En proceso") return "status-proceso";
+    return "border bg-white";
+}
+
+/* ============================================
+   ACTUALIZACIÓN DE CAMPOS + LOG
+============================================ */
+
+function updateStatus(g,i,select){
+    const pIdx = g;
+    if (!currentUser || !canEditProcess(pIdx)) {
+        alert("No tiene permisos para editar este proceso.");
+        select.value = auditData[g].items[i].status || "";
+        return;
+    }
+
+    const oldVal = auditData[g].items[i].status;
+    const newVal = select.value;
+
+    auditData[g].items[i].status = newVal;
+    save();
+    select.className = "state-select w-full p-1 rounded text-xs font-bold " + getStatusClass(newVal);
+
+    addLogEntry(g, i, "Estado", oldVal, newVal);
+}
+
+function updateEvidencia(g,i,v){
+    const pIdx = g;
+    if (!currentUser || !canEditProcess(pIdx)) {
+        alert("No tiene permisos para editar este proceso.");
+        renderTable();
+        return;
+    }
+    const oldVal = auditData[g].items[i].evidencia;
+    auditData[g].items[i].evidencia = v;
+    save();
+    addLogEntry(g, i, "Evidencia", oldVal, v);
+}
+
+function updateObs(g,i,v){
+    const pIdx = g;
+    if (!currentUser || !canEditProcess(pIdx)) {
+        alert("No tiene permisos para editar este proceso.");
+        renderTable();
+        return;
+    }
+    const oldVal = auditData[g].items[i].obs;
+    auditData[g].items[i].obs = v;
+    save();
+    addLogEntry(g, i, "Observación", oldVal, v);
+}
+
+function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(auditData));
+    updateDashboard();
+}
+
+/* ============================================
+   BOTÓN GUARDAR
+============================================ */
+
+function confirmSave() {
+    if (!currentUser) {
+        alert("La edición está bloqueada. Inicie sesión antes de guardar.");
+        return;
+    }
+    if (confirm("¿Estás seguro de guardar los cambios, Giovanni?")) {
+        save();
+        alert("Cambios guardados correctamente.");
+    }
+}
+
+/* ============================================
+   DASHBOARD GLOBAL + POR PROCESO
+============================================ */
+
+function updateDashboard() {
+    const items = auditData.flatMap(g => g.items);
+    
+    const total = items.length;
+    const terminados = items.filter(i => i.status === "Terminado 100%").length;
+    const proceso = items.filter(i => i.status === "En proceso").length;
+
+    const eficacia = total > 0 ? (terminados / total) * 100 : 0;
+
+    document.getElementById("stat-total").innerText = total;
+    document.getElementById("stat-cumple").innerText = terminados;
+    document.getElementById("stat-proceso").innerText = proceso;
+    document.getElementById("stat-eficacia").innerText = eficacia.toFixed(1) + "%";
+
+    auditData.forEach((group, idx) => {
+        const its = group.items;
+        const t = its.length;
+        const term = its.filter(i => i.status === "Terminado 100%").length;
+        const proc = its.filter(i => i.status === "En proceso").length;
+        const eff = t > 0 ? (term / t) * 100 : 0;
+
+        const nameEl = document.getElementById(`proc-${idx}-name`);
+        const totalEl = document.getElementById(`proc-${idx}-total`);
+        const termEl = document.getElementById(`proc-${idx}-term`);
+        const procEl = document.getElementById(`proc-${idx}-proc`);
+        const effEl = document.getElementById(`proc-${idx}-eff`);
+
+        if (nameEl) nameEl.textContent = group.process;
+        if (totalEl) totalEl.textContent = t;
+        if (termEl) termEl.textContent = term;
+        if (procEl) procEl.textContent = proc;
+        if (effEl) effEl.textContent = eff.toFixed(1) + "%";
+    });
+}
+
+/* ============================================
+   REINICIAR DATOS
+============================================ */
+
+function resetData() {
+    if (!currentUser || currentUser.role !== "admin") {
+        alert("Solo el administrador (gmanzano) puede reiniciar toda la información.");
+        return;
+    }
+    if (confirm("¿Reiniciar todos los datos a la plantilla original?")) {
+        auditData = JSON.parse(JSON.stringify(initialData));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(auditData));
+        renderTable();
+        alert("Datos reiniciados.");
+    }
+}
+
+/* ============================================
+   EXPORTAR A EXCEL
+============================================ */
+
+function exportToExcel() {
+    let exportData = [];
+
+    auditData.forEach(group => {
+        group.items.forEach(item => {
+            exportData.push({
+                "Proceso": group.process,
+                "Actividad": item.act,
+                "Criterio": item.q,
+                "Dimensión MIPG": item.mipg,
+                "Requisito ISO 9001": item.iso,
+                "Estado": item.status,
+                "Evidencia": item.evidencia,
+                "Observación": item.obs
+            });
+        });
+    });
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Auditoría SDDE");
+
+    XLSX.writeFile(wb, "Auditoria_SDDE_MIPG_ISO.xlsx");
+}
+
+/* ============================================
+   EXPORTAR INFORME A PDF
+============================================ */
+
+function buildPDFReportContent() {
+    const container = document.getElementById("pdf-report");
+    const now = new Date();
+    const fecha = now.toLocaleString("es-CO");
+
+    // Cálculos
+    const items = auditData.flatMap(g => g.items);
+    const total = items.length;
+    const terminados = items.filter(i => i.status === "Terminado 100%").length;
+    const enProceso = items.filter(i => i.status === "En proceso").length;
+    const eficacia = total > 0 ? (terminados / total) * 100 : 0;
+
+    let procesosHTML = "";
+
+    auditData.forEach((group, idx) => {
+        const its = group.items;
+        const t = its.length;
+        const term = its.filter(i => i.status === "Terminado 100%").length;
+        const proc = its.filter(i => i.status === "En proceso").length;
+        const eff = t > 0 ? (term / t) * 100 : 0;
+
+        let tablaItems = "";
+        its.forEach(it => {
+            tablaItems += `
+                <tr>
+                    <td style="border: 1px solid #ccc; padding: 4px;">${it.act}</td>
+                    <td style="border: 1px solid #ccc; padding: 4px;">${it.status || ""}</td>
+                    <td style="border: 1px solid #ccc; padding: 4px;">${it.evidencia || ""}</td>
+                    <td style="border: 1px solid #ccc; padding: 4px;">${it.obs || ""}</td>
+                </tr>
+            `;
+        });
+
+        procesosHTML += `
+            <h3 style="margin-top: 16px; font-size: 11px;">${group.process}</h3>
+            <p style="font-size: 10px; margin: 4px 0;">
+                Total ítems: <b>${t}</b> · Terminados 100%: <b>${term}</b> · En proceso: <b>${proc}</b> · Avance: <b>${eff.toFixed(1)}%</b>
+            </p>
+            <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-top: 4px;">
+                <thead>
+                    <tr>
+                        <th style="border: 1px solid #ccc; padding: 4px; background:#f3f4f6;">Actividad</th>
+                        <th style="border: 1px solid #ccc; padding: 4px; background:#f3f4f6;">Estado</th>
+                        <th style="border: 1px solid #ccc; padding: 4px; background:#f3f4f6;">Evidencia</th>
+                        <th style="border: 1px solid #ccc; padding: 4px; background:#f3f4f6;">Observación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tablaItems}
+                </tbody>
+            </table>
+        `;
+    });
+
+    const hallazgos = items.filter(i => i.status === "En proceso");
+
+    let hallazgosHTML = "";
+    if (hallazgos.length > 0) {
+        hallazgosHTML = `
+            <h3 style="margin-top: 16px; font-size: 11px;">Hallazgos (ítems en proceso)</h3>
+            <ul style="font-size: 9px; padding-left: 16px;">
+                ${hallazgos.map(h => `<li>${h.act} – Estado: En proceso</li>`).join("")}
+            </ul>
+        `;
+    } else {
+        hallazgosHTML = `
+            <h3 style="margin-top: 16px; font-size: 11px;">Hallazgos (ítems en proceso)</h3>
+            <p style="font-size: 9px;">No se registran ítems en proceso.</p>
+        `;
+    }
+
+    container.innerHTML = `
+        <div style="font-family: Arial, sans-serif; color:#111827;">
+            <h1 style="font-size: 14px; text-align:center; margin-bottom: 4px;">
+                Informe de Auditoría Interna – SDDE
+            </h1>
+            <p style="font-size: 9px; text-align:center; margin-top:0;">
+                Procesos: Gestión del Desarrollo Económico y Gestión del Turismo
+            </p>
+            <p style="font-size: 9px; text-align:right; margin-top:8px;">
+                Fecha de generación: ${fecha}
+            </p>
+
+            <h2 style="margin-top: 12px; font-size: 12px;">Resumen global</h2>
+            <p style="font-size: 9px;">
+                Total ítems: <b>${total}</b> · Terminados 100%: <b>${terminados}</b> · En proceso: <b>${enProceso}</b> · Avance global: <b>${eficacia.toFixed(1)}%</b>
+            </p>
+
+            ${procesosHTML}
+
+            ${hallazgosHTML}
+        </div>
+    `;
+}
+
+function exportToPDF() {
+    buildPDFReportContent();
+    const element = document.getElementById("pdf-report");
+    element.classList.remove("hidden");
+
+    const opt = {
+        margin:       10,
+        filename:     'Informe_Auditoria_SDDE.pdf',
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2 },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    html2pdf().set(opt).from(element).save().then(() => {
+        element.classList.add("hidden");
+    });
+}
+
+/* ============================================
+   INIT
+============================================ */
+renderTable();
+
+</script>
+
+</body>
+</html>
+
